@@ -40,4 +40,4 @@ int main(void) {
 
 ## Notes
 
-- You can also use asserts inside your code (but shouldn't use `obs_test`) just do `obs_assert(val, op, cond)` i.e. `obs_assert(ptr, !=, NULL);`
+- You can also use asserts inside your code (but shouldn't use `obs_test`) just do `obs_assert(val, op, cond)` i.e. `obs_assert(ptr, !=, NULL);`  These will tell you the evaluation of both sides.
