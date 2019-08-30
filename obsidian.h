@@ -22,8 +22,8 @@
     SOFTWARE.
 */
 
-#ifndef BWW_OBSIDIAN_H
-#define BWW_OBSIDIAN_H
+#ifndef OBSIDIAN_H
+#define OBSIDIAN_H
 
 #ifndef OBSIDIAN_LOG_SIZE
 #define OBSIDIAN_LOG_SIZE 1024
