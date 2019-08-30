@@ -33,6 +33,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#ifndef OBSIDIAN_NO_COLOURS
 #define RED   "\x1B[31m"
 #define GRN   "\x1B[32m"
 #define YEL   "\x1B[33m"
@@ -41,6 +42,16 @@
 #define CYN   "\x1B[36m"
 #define WHT   "\x1B[37m"
 #define RESET "\x1B[0m"
+#else
+#define RED   ""
+#define GRN   ""
+#define YEL   ""
+#define BLU   ""
+#define MAG   ""
+#define CYN   ""
+#define WHT   ""
+#define RESET ""
+#endif
 
 #ifndef STRINGIFY
 #define STRINGIFY(x) #x
@@ -70,18 +81,16 @@
     old_failures = failures; \
     old_tests = num_tests; \
     old_num_of_asserts = num_of_asserts; \
-    printf("== " #group_name " ==\n\n"); \
     group \
     tests_in_group = num_tests - old_tests; \
     successes_in_group = successes - old_successes; \
     failures_in_group = failures - old_failures; \
     if (failures_in_group == 0) { \
         groups_passed++; \
-        printf(GRN "Passed" RESET " %d/%d tests\n\n", successes_in_group, tests_in_group); \
+        printf(#group_name ": " GRN "Passed" RESET " %d/%d tests (with a total of %d asserts)\n\n", successes_in_group, tests_in_group, num_of_asserts - old_num_of_asserts); \
     } else { \
-        printf(RED "Failed" RESET " %d/%d tests\n\n", failures_in_group, tests_in_group); \
-    } \
-    printf(BLU "Ran" RESET " a total of %d checks in this group\n", num_of_asserts - old_num_of_asserts);
+        printf(#group_name ": " RED "Failed" RESET " %d/%d tests (with a total of %d asserts)\n\n", failures_in_group, tests_in_group, num_of_asserts - old_num_of_asserts); \
+    }
 
 #define OBS_TEST(name, group) \
     num_tests++; \
