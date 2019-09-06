@@ -58,6 +58,7 @@ int main(int argc, char *argv[]) {
 Results on my system:
 
 Benchmarking Convert a bunch of stuff (10 times/s)
+
 | usr (s)        | sys (s)        | wall (s)       |
 | -------------- | -------------- | -------------- |
 | 0.007 +- 0.001 | 0.000 +- 0.000 | 0.008 +- 0.001 |
