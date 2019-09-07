@@ -1,14 +1,5 @@
-#define OBS_GET_TIME cbenchGetTime
-#define OBS_GET_WALL_TIME cbenchGetWallTime
-#define obsTime cbenchTime
-
-#define OBS_NO_BENCHMARKS_CHILD
-
-#include "obsidian.h"
-
-// note how this is below obsidian which means it won't detect cbench
-// and it'll have to rely on the macros for it to work
 #include "cbench.h"
+#include "obsidian.h"
 
 int add(int a, int b) { return a + b; }
 

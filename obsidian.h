@@ -119,7 +119,7 @@
 
 #define OBS_MAJOR_V "1"
 #define OBS_MINOR_V "0"
-#define OBS_PATCH_V "0"
+#define OBS_PATCH_V "a"
 
 #define OBS_VERSION OBS_MAJOR_V "." OBS_MINOR_V "." OBS_PATCH_V
 
