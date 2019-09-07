@@ -183,13 +183,15 @@
 #if !defined OBS_GET_TIME && !defined OBS_GET_WALL_TIME
 
 #if defined CBENCH_VERSION
-#if (defined _MSC_VER || defined __MINGW32__)
-#define OBS_NO_BENCHMARKS_CHILD
+#if defined _MSC_VER || defined __MINGW32__
+#define OBS_GET_CHILDREN_TIME() cbenchGetProcessTime(obs_process_info.hProcess)
+#else
+#define OBS_GET_CHILDREN_TIME cbenchGetChildrenTime
 #endif
 
 #define OBS_GET_TIME cbenchGetTime
 #define OBS_GET_WALL_TIME cbenchGetWallTime
-#define OBS_GET_CHILDREN_TIME cbenchGetChildrenTime
+
 #define obsTime cbenchTime
 #else
 #define OBS_NO_CBENCH
@@ -208,6 +210,7 @@
 
 #if !defined OBS_NO_REDIRECT
 #if defined _MSC_VER || defined __MINGW32__
+#define WIN32_LEAN_AND_MEAN
 #include <io.h>
 const char *obs_devnull = "NUL";
 #define OBS_DUP(fd) _dup(fd)
@@ -365,11 +368,30 @@ if (obs_can_run_(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
                          OBS_GET_WALL_TIME, benchmark);
 
 #ifndef OBS_NO_BENCHMARKS_CHILD
+#if defined _MSC_VER || defined __MINGW32_
+#define OBS_BENCHMARK_CHILD(benchmark_name, repetitions, benchmark...) \
+{ \
+    HANDLE obs_process_ = CreateProcess(argv[0], ) \
+    OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_CHILDREN_TIME, \
+                         OBS_GET_WALL_TIME, benchmark) \
+}
+
+#define OBS_BENCHMARK_SYS(benchmark_name, repetitions, command) \
+{ \
+    PROCESS_INFORMATION obs_process_info; \
+    CreateProcess(argv[0], command, NULL, NULL, FALSE, 0, NULL, NULL, NULL, &obs_process_info); \
+    OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_CHILDREN_TIME, \
+                         OBS_GET_WALL_TIME, benchmark) \
+    CloseHandle(obs_process_info.hProcess); \
+    CloseHandle(obs_process_info.hThread); \
+}
+#else
 #define OBS_BENCHMARK_CHILD(benchmark_name, repetitions, benchmark...) \
     OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_CHILDREN_TIME, \
                          OBS_GET_WALL_TIME, benchmark);
 #define OBS_BENCHMARK_SYS(benchmark_name, repetitions, command) \
     OBS_BENCHMARK_CHILD(benchmark_name, repetitions, {system(command);});
+#endif
 #else
 #define OBS_BENCHMARK_CHILD(...) ;
 #define OBS_BENCHMARK_SYS(...) ;
