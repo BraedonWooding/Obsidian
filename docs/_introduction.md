@@ -214,7 +214,7 @@ You can pass arguments to your program by passing them after a `--` i.e.
 ./a.out -b "MyBenchmark" -v -e -- my own flags are here 20
 ```
 
-Your program would see
+Your program would see the following
 
 ```bash
 ./a.out my own flags are here 20
