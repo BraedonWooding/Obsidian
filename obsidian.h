@@ -89,6 +89,7 @@
       - obsTime should be a struct containing 2 doubles userTime and systemTime.
         spelt exactly that way.  It can contain extra stuff but should aim for
         just those.
+    - You can disable all output (the files are still created) via OBS_NO_PRINT
 
     Arguments that obsidian will handle:
     '--benchmarks' or '-b' =>
@@ -135,6 +136,14 @@
 #define RESET ""
 #endif
 
+#ifdef _MSC_VER
+#define _OBSIDIAN_FUNC_ static __inline
+#elif !defined __STDC_VERSION__ || __STDC_VERSION__ < 199901L
+#define _OBSIDIAN_FUNC_ static __inline__
+#else
+#define _OBSIDIAN_FUNC_ static inline
+#endif
+
 #if (defined OBS_ERROR_SIGNAL && !defined OBS_ERROR_SIGNAL_NAME) || \
     (defined OBS_ERROR_SIGNAL_NAME && !defined OBS_ERROR_SIGNAL)
 #error "Must provide OBS_ERROR_SIGNAL and OBS_ERROR_SIGNAL_NAME"
@@ -178,7 +187,7 @@
 
 #define OBS_MAX_TYPE_SIZE (256)
 
-#ifndef OBS_NO_REDIRECT
+#if !defined OBS_NO_REDIRECT
 #if defined _MSC_VER || defined __MINGW32__
 #include <io.h>
 const char *obs_devnull = "NUL";
@@ -254,7 +263,7 @@ bool has_groups = false; \
     OBS_REDIRECT_DEVNULL(stdout, stdout);
 
 #define OBS_TEST_GROUP(group_name, group...) \
-if (obs_can_run(group_name, group_start, num_group_filter)) { \
+if (obs_can_run_(group_name, group_start, num_group_filter)) { \
     num_groups++; \
     old_successes = successes; \
     old_failures = failures; \
@@ -276,7 +285,7 @@ if (obs_can_run(group_name, group_start, num_group_filter)) { \
 
 #if !defined OBS_NO_BENCHMARKS
 #define OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, get_time, wall_time, benchmark...) \
-if (obs_can_run(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
+if (obs_can_run_(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
     fprintf(benchmark_log, BLU "Benchmarking" RESET " " benchmark_name " (" #repetitions " time/s) \n"); \
     double max_sys = -1, min_sys = -1; \
     double max_usr = -1, min_usr = -1; \
@@ -348,7 +357,7 @@ if (obs_can_run(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
 #endif
 
 #define OBS_TEST(name, group...) \
-if (obs_can_run(name, test_start, num_tests_filter)) { \
+if (obs_can_run_(name, test_start, num_tests_filter)) { \
     num_tests++; \
     success = true; \
     cur_test = name; \
@@ -378,21 +387,21 @@ do { \
     } \
 } while(0)
 
-#define obs_test_binop(type, x, op, y) obs_test((x op y), obs_get_format(#type), (type)x, (type)y)
+#define obs_test_binop(type, x, op, y) obs_test((x op y), obs_get_format_(#type), (type)x, (type)y)
 #define obs_test_eq(type, x, y) obs_test_binop(type, x, ==, y)
 #define obs_test_neq(type, x, y) obs_test_binop(type, x, !=, y)
 #define obs_test_lt(type, x, y) obs_test_binop(type, x, <, y)
 #define obs_test_gt(type, x, y) obs_test_binop(type, x, >, y)
 #define obs_test_lte(type, x, y) obs_test_binop(type, x, <=, y)
 #define obs_test_gte(type, x, y) obs_test_binop(type, x, >=, y)
-#define obs_test_str_eq(x, y) obs_test(OBS_STRCMP(x, y) == 0, obs_get_format("char*"), x, y)
-#define obs_test_str_neq(x, y) obs_test(OBS_STRCMP(x, y) != 0, obs_get_format("char*"), x, y)
+#define obs_test_str_eq(x, y) obs_test(OBS_STRCMP(x, y) == 0, obs_get_format_("char*"), x, y)
+#define obs_test_str_neq(x, y) obs_test(OBS_STRCMP(x, y) != 0, obs_get_format_("char*"), x, y)
 #define obs_test_not_null(x) obs_test(x != NULL, #x " is NULL")
 #define obs_test_null(x) obs_test(x == NULL, #x " == %p is not NULL", x)
 #define obs_test_true(x) obs_test((x) == true, #x " is not true")
 #define obs_test_false(x) obs_test((x) == false, #x " is not false")
 
-static inline const char *obs_get_format(char *type) {
+_OBSIDIAN_FUNC_ const char *obs_get_format_(char *type) {
     // We only support types up to 256 characters in size
     // Strip all spaces so we can support pointers better
     static char buf[OBS_MAX_TYPE_SIZE];
@@ -442,6 +451,7 @@ static inline const char *obs_get_format(char *type) {
 }
 
 // Present results and exits
+#ifndef OBS_NO_PRINT
 #define OBS_REPORT \
     OBS_RESTORE(stdout, stdout); \
     int c; \
@@ -452,6 +462,7 @@ static inline const char *obs_get_format(char *type) {
         remove(log_file_name); \
     } else if (successes == num_tests) { \
         printf("Log Files are at: %s\n", log_file_name); \
+        fclose(err_log); \
         remove(err_log_file_name); \
     } else { \
         printf("Log Files are at: %s and %s\n\n==Errors==\n", log_file_name, err_log_file_name); \
@@ -470,13 +481,34 @@ static inline const char *obs_get_format(char *type) {
     } \
     tests_failed = failures; \
 }
+#else
+#define OBS_REPORT \
+    OBS_RESTORE(stdout, stdout); \
+    fclose(log); \
+    if (num_groups == 0) { \
+        remove(log_file_name); \
+    } else if (successes == num_tests) { \
+        fclose(err_log); \
+        remove(err_log_file_name); \
+    } else { \
+        fclose(err_log); \
+    } \
+    if (benchmarks_run > 0) { \
+        fclose(benchmark_log); \
+    } else { \
+        fclose(benchmark_log); \
+        remove(benchmarks_log_file_name); \
+    } \
+    tests_failed = failures; \
+}
+#endif
 
 /*
     Below is internals you don't need to run these.
 */
 
 // Can we run the test/benchmark based on settings
-static inline bool obs_can_run(char *name, char **start, int len) {
+_OBSIDIAN_FUNC_ bool obs_can_run_(char *name, char **start, int len) {
     if (start == NULL) return true;
 
     for (int i = 0; i < len; i++) {
@@ -488,7 +520,7 @@ static inline bool obs_can_run(char *name, char **start, int len) {
 }
 
 // Parse all the relevant args
-static inline bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *raise_on_err,
+_OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *raise_on_err,
                      char ***test_start, int *num_tests,
                      char ***benchmark_start, int *num_benchmarks,
                      char ***test_group_start, int *num_groups) {
@@ -566,48 +598,29 @@ static inline bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *rai
     if (custom_settings) {
         fprintf(out, "== Settings ==\n");
     }
-
     if (*raise_on_err) {
         fprintf(out, "- Raising signal ");
         fprintf(out, OBS_ERROR_SIGNAL_NAME);
         fprintf(out, "(%d) on error\n", OBS_ERROR_SIGNAL);
     }
-
-    if (*test_start != NULL) {
-        if (*num_tests > 0) {
-            fprintf(out, "- Running tests: %s", (*test_start)[0]);
-            for (int i = 1; i < *num_tests; i++) {
-                fprintf(out, ", %s", (*test_start)[i]);
-            }
-            fprintf(out, "\n");
-        } else {
-            fprintf(out, "- Running no tests\n");
-        }
+#define OBS_TEST_INFO(start, count, name) \
+    if (*start != NULL) { \
+        if (*count > 0) { \
+            fprintf(out, "- Running " name ": %s", (*start)[0]); \
+            for (int i = 1; i < *count; i++) { \
+                fprintf(out, ", %s", (*start)[i]); \
+            } \
+            fprintf(out, "\n"); \
+        } else { \
+            fprintf(out, "- Running no " name "\n"); \
+        } \
     }
 
-    if (*benchmark_start != NULL) {
-        if (*num_benchmarks > 0) {
-            fprintf(out, "- Running benchmarks: %s", (*benchmark_start)[0]);
-            for (int i = 1; i < *num_benchmarks; i++) {
-                fprintf(out, ", %s", (*benchmark_start)[i]);
-            }
-            fprintf(out, "\n");
-        } else {
-            fprintf(out, "- Running no benchmarks\n");
-        }
-    }
+    OBS_TEST_INFO(test_start, num_tests, "tests");
+    OBS_TEST_INFO(benchmark_start, num_benchmarks, "benchmarks");
+    OBS_TEST_INFO(test_group_start, num_groups, "groups");
+#undef OBS_TEST_INFO
 
-    if (*test_group_start != NULL) {
-        if (*num_groups > 0) {
-            fprintf(out, "- Running groups: %s", (*test_group_start)[0]);
-            for (int i = 1; i < *num_groups; i++) {
-                fprintf(out, ", %s", (*test_group_start)[i]);
-            }
-            fprintf(out, "\n");
-        } else {
-            fprintf(out, "- Running no test groups\n");
-        }
-    }
     if (custom_settings) {
         fprintf(out, "\n");
     }
@@ -616,4 +629,3 @@ static inline bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *rai
 }
 
 #endif /* OBSIDIAN_H */
-
