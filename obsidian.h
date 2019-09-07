@@ -27,10 +27,10 @@
     - Include obsidian.h
     - Define a main function (with argc/argv)
     - OBS_SETUP("Name of App", argc, argv); to parse arguments and the such
-        - NOTE: If you wish to use arguments in your own application supply
-                #define OBS_STRIP_ARGS which will strip all arguments before
+        - NOTE: By default it will strip args before
                 a -- argument.  i.e. ./tests --benchmarks "My Test" Other -- 2
                 will just become `2`
+        - You can turn off above by definining OBS_DONT_STRIP_ARGS
     - Define your groups via OBS_TEST_GROUP("Name", { contents... })
         - Inside each group contents you can put any code you want
           To define a test just use OBS_TEST("Name", { contents... })
@@ -40,7 +40,7 @@
         - obs_test(cond, fmt, args...)
           i.e. obs_test(a > 0, "a (%d) is positive", a);
         - obs_test_binop(type, x, op, y)
-          i.e. obs_test_binop(int, x, ==, y);
+          i.e. obs_test_binop(int, x, ==, !=, y);
           > Prints out both arguments evaluated values in a nice way
           NOTE: doesn't store either x or y and will evaluate them twice each
         - obs_test_eq(type, x, y) equivalent to obs_test_binop(type, x, =, y)
@@ -54,10 +54,10 @@
             equivalent.
             NOTE: You can override the strcmp function by defining OBS_STRCMP
         - obs_test_str_neq(x, y) opposite of above.
-        - obs_test_null(x) => obs_test_eq(void*, x, NULL) with less output
-        - obs_test_not_null(x) => obs_test_neq(void*, x, NULL) with less output
-        - obs_test_true(x) => obs_test_eq(bool, x, true) with less output
-        - obs_test_false(x) => obs_test_eq(bool, x, false) with less output
+        - obs_test_null(x) => obs_test_eq(void*, x, NULL) with nicer output
+        - obs_test_not_null(x) => obs_test_neq(void*, x, NULL) with nicer output
+        - obs_test_true(x) => obs_test_eq(bool, x, true) with nicer output
+        - obs_test_false(x) => obs_test_eq(bool, x, false) with nicer output
 
         NOTE: By less output I mean I don't output the constants true, false
               or NULL and often give better assertion outputs
@@ -100,6 +100,7 @@
     '--raise-on-error' or '-e' =>
         Raise a signal on the first error allowing you to debug the test
         using a standard debugger.  The signal is #defined.
+    '--version' or '-v' => print out version information
 
     Debugging Tips:
     - Find all stack frames ('bt')
@@ -115,6 +116,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+
+#define OBS_MAJOR_V "1"
+#define OBS_MINOR_V "0"
+#define OBS_PATCH_V "0"
+
+#define OBS_VERSION OBS_MAJOR_V "." OBS_MINOR_V "." OBS_PATCH_V
 
 #ifndef OBS_NO_COLOURS
 #define RED   "\x1B[31m"
@@ -174,10 +181,20 @@
 #endif
 
 #if !defined OBS_GET_TIME && !defined OBS_GET_WALL_TIME
+
+#if defined CBENCH_VERSION
+#if (defined _MSC_VER || defined __MINGW32__)
+#define OBS_NO_BENCHMARKS_CHILD
+#endif
+
 #define OBS_GET_TIME cbenchGetTime
 #define OBS_GET_WALL_TIME cbenchGetWallTime
 #define OBS_GET_CHILDREN_TIME cbenchGetChildrenTime
-#define obsTime struct cbench_time_t
+#define obsTime cbenchTime
+#else
+#define OBS_NO_CBENCH
+#endif
+
 #else
 #if (!defined obsTime)
 #error "Must also provide the time struct"
@@ -185,7 +202,9 @@
 #endif
 #endif
 
+#ifndef OBS_MAX_TYPE_SIZE
 #define OBS_MAX_TYPE_SIZE (256)
+#endif
 
 #if !defined OBS_NO_REDIRECT
 #if defined _MSC_VER || defined __MINGW32__
@@ -200,18 +219,21 @@ const char *obs_devnull = "/dev/null";
 #define OBS_DUP2(fd, newfd) dup2(fd, newfd)
 #endif
 
-#define OBS_REDIRECT_DEVNULL(id, out) \
+#define OBS_REDIRECT(id, out, to, mode) \
     fflush(out); \
     int id##_stdoutBackupFd = OBS_DUP(fileno(out)); \
-    FILE *id##_nullOut = fopen(obs_devnull, "w"); \
-    OBS_DUP2(fileno(id##_nullOut), fileno(out));
+    FILE *id##_toOut = fopen(to, mode); \
+    OBS_DUP2(fileno(id##_toOut), fileno(out));
+
+#define OBS_REDIRECT_DEVNULL(id, out) OBS_REDIRECT(id, out, obs_devnull, "w");
 
 #define OBS_RESTORE(id, out) \
     fflush(out); \
-    fclose(id##_nullOut); \
+    fclose(id##_toOut); \
     OBS_DUP2(id##_stdoutBackupFd, fileno(out)); \
     close(id##_stdoutBackupFd);
 #else
+#define OBS_REDIRECT(id, out, to, mode) ;
 #define OBS_REDIRECT_DEVNULL(id, out) ;
 #define OBS_RESTORE(id, out) ;
 #endif
@@ -283,7 +305,7 @@ if (obs_can_run_(group_name, group_start, num_group_filter)) { \
     } \
 }
 
-#if !defined OBS_NO_BENCHMARKS
+#if !defined OBS_NO_BENCHMARKS && !defined OBS_NO_CBENCH
 #define OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, get_time, wall_time, benchmark...) \
 if (obs_can_run_(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
     fprintf(benchmark_log, BLU "Benchmarking" RESET " " benchmark_name " (" #repetitions " time/s) \n"); \
@@ -348,7 +370,16 @@ if (obs_can_run_(benchmark_name, benchmark_start, num_benchmarks_filter)) { \
                          OBS_GET_WALL_TIME, benchmark);
 #define OBS_BENCHMARK_SYS(benchmark_name, repetitions, command) \
     OBS_BENCHMARK_CHILD(benchmark_name, repetitions, {system(command);});
+#else
+#define OBS_BENCHMARK_CHILD(...) ;
+#define OBS_BENCHMARK_SYS(...) ;
 #endif
+
+#elif defined OBS_NO_CBENCH
+#define OBS_BENCHMARK(...) @"No benchmarking library included";
+#define OBS_BENCHMARK_SYS(...) @"No benchmarking library included";
+#define OBS_BENCHMARK_CHILD(...) @"No benchmarking library included";
+#define OBS_BENCHMARK_CUSTOM(...) @"No benchmarking library included";
 #else
 #define OBS_BENCHMARK(...) ;
 #define OBS_BENCHMARK_SYS(...) ;
@@ -381,23 +412,23 @@ do { \
         } \
         success = false; \
         fprintf(err_log, GRN __FILE__":%d" RESET RED " TEST FAILED: " RESET "%s:%s""\n", __LINE__, cur_group, cur_test); \
-        fprintf(err_log, "Assert is " #cond "\n"); \
+        fprintf(err_log, "Assert " #cond "\n"); \
         fprintf(err_log, fmt, ##args); \
         fprintf(err_log, "\n\n"); \
     } \
 } while(0)
 
-#define obs_test_binop(type, x, op, y) obs_test((x op y), obs_get_format_(#type), (type)x, (type)y)
+#define obs_test_binop(type, x, op, y) obs_test((x op y), obs_get_format_(#type), (type)x, obs_get_neg_op_(#op), (type)y)
 #define obs_test_eq(type, x, y) obs_test_binop(type, x, ==, y)
 #define obs_test_neq(type, x, y) obs_test_binop(type, x, !=, y)
 #define obs_test_lt(type, x, y) obs_test_binop(type, x, <, y)
 #define obs_test_gt(type, x, y) obs_test_binop(type, x, >, y)
 #define obs_test_lte(type, x, y) obs_test_binop(type, x, <=, y)
 #define obs_test_gte(type, x, y) obs_test_binop(type, x, >=, y)
-#define obs_test_str_eq(x, y) obs_test(OBS_STRCMP(x, y) == 0, obs_get_format_("char*"), x, y)
-#define obs_test_str_neq(x, y) obs_test(OBS_STRCMP(x, y) != 0, obs_get_format_("char*"), x, y)
+#define obs_test_str_eq(x, y) obs_test(OBS_STRCMP(x, y) == 0, obs_get_format_("char*"), x, "==", y)
+#define obs_test_str_neq(x, y) obs_test(OBS_STRCMP(x, y) != 0, obs_get_format_("char*"), x, "!=", y)
 #define obs_test_not_null(x) obs_test(x != NULL, #x " is NULL")
-#define obs_test_null(x) obs_test(x == NULL, #x " == %p is not NULL", x)
+#define obs_test_null(x) obs_test((x) == NULL, #x " = %p is not NULL", x)
 #define obs_test_true(x) obs_test((x) == true, #x " is not true")
 #define obs_test_false(x) obs_test((x) == false, #x " is not false")
 
@@ -416,37 +447,37 @@ _OBSIDIAN_FUNC_ const char *obs_get_format_(char *type) {
 #endif
 
     if (!strcmp(buf, "int") || !strcmp(buf, "signed") || !strcmp(buf, "signed int")) {
-        return "Args are: %i, %i";
+        return "Evaluated: %i %s %i";
     } else if (!strcmp(buf, "long") || !strcmp(buf, "longint") || !strcmp(buf, "signedlong") || !strcmp(buf, "signedlongint")) {
-        return "Args are: %li, %li";
+        return "Evaluated: %li %s %li";
     } else if (!strcmp(buf, "longlong") || !strcmp(buf, "longlongint") || !strcmp(buf, "signedlonglong") || !strcmp(buf, "signedlonglongint")) {
-        return "Args are: %lli, %lli";
+        return "Evaluated: %lli %s %lli";
     } else if (!strcmp(buf, "size_t")) {
-        return "Args are: %zu, %zu";
+        return "Evaluated: %zu %s %zu";
     } else if (!strcmp(buf, "ptrdiff_t")) {
-        return "Args are: %zd, %zd";
+        return "Evaluated: %zd %s %zd";
     } else if (!strcmp(buf, "unsigned") || !strcmp(buf, "unsignedint")) {
-        return "Args are: %u, %u";
+        return "Evaluated: %u %s %u";
     } else if (!strcmp(buf, "unsignedlong") || !strcmp(buf, "unsignedlongint")) {
-        return "Args are: %lu, %lu";
+        return "Evaluated: %lu %s %lu";
     } else if (!strcmp(buf, "unsignedlonglong") || !strcmp(buf, "unsignedlonglongint")) {
-        return "Args are: %llu, %llu";
+        return "Evaluated: %llu %s %llu";
     } else if (!strcmp(buf, "float")) {
-        return "Args are: %f, %f";
+        return "Evaluated: %f %s %f";
     } else if (!strcmp(buf, "double")) {
-        return "Args are: %lf, %lf";
+        return "Evaluated: %lf %s %lf";
     } else if (!strcmp(buf, "longdouble")) {
-        return "Args are: %Lf, %Lf";
+        return "Evaluated: %Lf %s %Lf";
     } else if (!strcmp(buf, "char") || !strcmp(buf, "signedchar") || !strcmp(buf, "unsignedchar")) {
-        return "Args are: '%c', '%c'";
+        return "Evaluated: '%c' %s '%c'";
     } else if (!strcmp(buf, "char*")) {
-        return "Args are: \"%s\", \"%s\"";
+        return "Evaluated: \"%s\" %s \"%s\"";
     } else if (!strcmp(buf, "void*")) {
-        return "Args are: %p, %p";
+        return "Evaluated: %p %s %p";
     } else if (!strcmp(buf, "bool") || !strcmp(buf, "_Bool")) {
-        return "Args are: %d, %d";
+        return "Evaluated: %d %s %d";
     } else {
-        return "Args are: %p, %p";
+        return "Evaluated: %p %s %p";
     }
 }
 
@@ -519,6 +550,20 @@ _OBSIDIAN_FUNC_ bool obs_can_run_(char *name, char **start, int len) {
     return false;
 }
 
+_OBSIDIAN_FUNC_ const char *obs_get_neg_op_(const char *op) {
+    if (0) {}
+#ifdef OBS_EXTRA_NEG_OP
+    OBS_EXTRA_NEG_OP
+#endif
+    else if (!strcmp(op, "==")) return "!=";
+    else if (!strcmp(op, "!=")) return "==";
+    else if (!strcmp(op, ">"))  return "<=";
+    else if (!strcmp(op, "<"))  return ">=";
+    else if (!strcmp(op, ">=")) return "<";
+    else if (!strcmp(op, "<=")) return ">";
+    else                        return "and";
+}
+
 // Parse all the relevant args
 _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *raise_on_err,
                      char ***test_start, int *num_tests,
@@ -532,6 +577,7 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *r
     *num_tests = 0;
     int *last_counter = NULL;
     bool custom_settings = false;
+    bool version = false;
 
     for (int i = 1; i < *argc; i++) {
         if (!strcmp((*argv)[i], "--tests") || !strcmp((*argv)[i], "-t")) {
@@ -575,8 +621,11 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *r
             }
             *raise_on_err = true;
             custom_settings = true;
+        } else if (!strcmp((*argv)[i], "--version") || !strcmp((*argv)[i], "-v")) {
+            version = true;
+            custom_settings = true;
         }
-#ifndef OBS_STRIP_ARGS
+#ifndef OBS_DONT_STRIP_ARGS
         else if (!strcmp((*argv)[i], "--")) {
             // redirect this one to the first one
             *argc -= i;
@@ -598,6 +647,12 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *r
     if (custom_settings) {
         fprintf(out, "== Settings ==\n");
     }
+    if (version) {
+        fprintf(out, "Obsidian version v" OBS_VERSION "\n");
+#ifdef CBENCH_VERSION
+        fprintf(out, "CBench version v" CBENCH_VERSION "\n");
+#endif
+    }
     if (*raise_on_err) {
         fprintf(out, "- Raising signal ");
         fprintf(out, OBS_ERROR_SIGNAL_NAME);
@@ -608,7 +663,7 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv, bool *r
         if (*count > 0) { \
             fprintf(out, "- Running " name ": %s", (*start)[0]); \
             for (int i = 1; i < *count; i++) { \
-                fprintf(out, ", %s", (*start)[i]); \
+                fprintf(out, " %s", (*start)[i]); \
             } \
             fprintf(out, "\n"); \
         } else { \

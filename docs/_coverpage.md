@@ -9,4 +9,4 @@
 - Coloured, pretty and concise errors
 
 [Github](https://github.com/BraedonWooding/Obsidian)
-[Quick Start Guide](#quickstart)
+[Quick Start Guide](_introduction)
