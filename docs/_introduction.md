@@ -208,13 +208,21 @@ Benchmarking Find using sys (10 time/s)
 
 ## Flags
 
-There are various flags that you can use with any compiled obsidian executable.
-
 You can pass arguments to your program by passing them after a `--` i.e.
 
 ```bash
 ./a.out -b "MyBenchmark" -v -e -- my own flags are here 20
 ```
+
+Your program would see
+
+```bash
+./a.out my own flags are here 20
+```
+
+### Obsidian Flags
+
+Obsidian also comes with a series of flags with all compiled programs they are;
 
 - `-b` or `--benchmarks` enable only the tests that follow this command i.e. `-b Hello "Use quotes for things with spaces" other` will only run `Hello`, `Use quotes for things with spaces` and `other`.
   - i.e. if you want to run no benchmarks do `-b` by itself
