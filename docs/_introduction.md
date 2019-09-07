@@ -115,6 +115,7 @@ int main(int argc, char *argv[]) {
     // this runs an external 'system' command and tracks the time
     OBS_BENCHMARK_SYS("Find using sys", 10, "find .")
 
+    OBS_REPORT
     return tests_failed;
 }
 ```
