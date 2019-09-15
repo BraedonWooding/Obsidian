@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     // this runs an external 'system' command and tracks the time
     OBS_BENCHMARK_SYS("Find using sys", 10, "find .")
 
-    OBS_REPORT 
+    OBS_REPORT;
     return tests_failed;
 }
 ```
@@ -189,7 +189,7 @@ Benchmarking Find using sys (10 time/s)
 
 !> `obs_test_binop`, and all the comparison ones will evaulate all their args twice make sure you cache anything important
 
-- `obs_test(cond, fmt, args...)`
+- `obs_test(cond, ...)`
   - i.e. `obs_test(a > 0, "a (%d) is positive", a);`
 - `obs_test_binop(type, x, op, y)`
   - i.e. `obs_test_binop(int, x, ==, y);`
@@ -201,11 +201,18 @@ Benchmarking Find using sys (10 time/s)
 - `obs_test_gte(type, x, y)` equivalent to `obs_test_binop(type, x, >=, y)`
 - `obs_test_str_eq(x, y)`
   - Does a strcmp, you can override the strcmp done via defining `OBS_STRCMP` as talked about in [Customisations](_customisations)
-- `obs_test_str_neq(x, y)` boolean negation of above.
+- `obs_test_str_neq(x, y)` negation of below.
+- `obs_test_str_eq(x, y)`
+  - Does a strcmp, you can override the strcmp done via defining `OBS_STRCMP` as talked about in [Customisations](_customisations)
+- `obs_test_mem_eq(type, x, y)`
+  - Does a memcmp, you can override the memcmp done via defining `OBS_MEMCMP` as talked about in [Customisations](_customisations)
+  - Note: x and y should be the pointer versions of type i.e. `obs_test_mem_eq(int, &x, &y)`
+- `obs_test_mem_neq(type, x, y)` negatation of above.
 - `obs_test_null(x)` => `obs_test_eq(void*, x, NULL)` with nicer output
 - `obs_test_not_null(x)` => `obs_test_neq(void*, x, NULL)` with nicer output
 - `obs_test_true(x)` => `obs_test_eq(bool, x, true)` with nicer output
 - `obs_test_false(x)` => `obs_test_eq(bool, x, false)` with nicer output
+- `obs_err(...)` effectively just `obs_test(0, ...)` but doesn't print the assert message which was just 0.  So often nicer if you want to always error.  Will still only run if was succeeding so far!
 
 ## Flags
 

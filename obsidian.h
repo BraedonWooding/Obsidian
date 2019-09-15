@@ -37,8 +37,10 @@
         - Inside each OBS_TEST's contents you can put multiple obs_test's
           i.e. obs_test_eq(int, a, b);
         There are the following tests:
-        - obs_test(cond, fmt, args...)
+        - obs_test(cond, args...)
           i.e. obs_test(a > 0, "a (%d) is positive", a);
+          You should always provide atleast a string for the printf and how
+          ever many args you want after that.
         - obs_test_binop(type, x, op, y)
           i.e. obs_test_binop(int, x, ==, !=, y);
           > Prints out both arguments evaluated values in a nice way
@@ -54,6 +56,13 @@
             equivalent.
             NOTE: You can override the strcmp function by defining OBS_STRCMP
         - obs_test_str_neq(x, y) opposite of above.
+        - obs_test_mem_eq(type, x, y)
+            Does a byte comparison, note x and y should be `(type *)`
+            i.e. pass them as pointers, this prevents us having to do any voodoo
+            and acts like how you would want a memcmp to work.
+            NOTE: You can override the memcmp function by defining OBS_MEMCMP
+        - obs_test_mem_neq(type, x, y)
+            opposite of above
         - obs_test_null(x) => obs_test_eq(void*, x, NULL) with nicer output
         - obs_test_not_null(x) => obs_test_neq(void*, x, NULL) with nicer output
         - obs_test_true(x) => obs_test_eq(bool, x, true) with nicer output
@@ -118,8 +127,8 @@
 #include <string.h>
 
 #define OBS_MAJOR_V "1"
-#define OBS_MINOR_V "0"
-#define OBS_PATCH_V "c"
+#define OBS_MINOR_V "1"
+#define OBS_PATCH_V "a"
 
 #define OBS_VERSION OBS_MAJOR_V "." OBS_MINOR_V "." OBS_PATCH_V
 
@@ -163,6 +172,10 @@
 
 #ifndef OBS_STRCMP
 #define OBS_STRCMP strcmp
+#endif
+
+#ifndef OBS_MEMCMP
+#define OBS_MEMCMP memcmp
 #endif
 
 #if !defined OBS_NO_BENCHMARKS
@@ -209,12 +222,12 @@
 #if !defined OBS_NO_REDIRECT
 #if defined _MSC_VER || defined __MINGW32__
 #include <io.h>
-const char *obs_devnull = "NUL";
+#define obs_devnull ("NUL")
 #define OBS_DUP(fd) _dup(fd)
 #define OBS_DUP2(fd, newfd) _dup2(fd, newfd)
 #else
 #include <unistd.h>
-const char *obs_devnull = "/dev/null";
+#define obs_devnull ("/dev/null")
 #define OBS_DUP(fd) dup(fd)
 #define OBS_DUP2(fd, newfd) dup2(fd, newfd)
 #endif
@@ -295,7 +308,7 @@ const char *obs_devnull = "/dev/null";
     has_tests = test_start == NULL || num_tests_filter > 0;                    \
     OBS_REDIRECT_DEVNULL(stdout, stdout);
 
-#define OBS_TEST_GROUP(group_name, group...)                                   \
+#define OBS_TEST_GROUP(group_name, ...)                                        \
   if (obs_can_run_(group_name, group_start, num_group_filter)) {               \
     num_groups++;                                                              \
     old_successes = successes;                                                 \
@@ -304,7 +317,8 @@ const char *obs_devnull = "/dev/null";
     old_num_of_asserts = num_of_asserts;                                       \
     cur_group = group_name;                                                    \
     fprintf(log, BLU "Running" RESET " " group_name " ");                      \
-    group tests_in_group = num_tests - old_tests;                              \
+    __VA_ARGS__;                                                               \
+    tests_in_group = num_tests - old_tests;                                    \
     successes_in_group = successes - old_successes;                            \
     failures_in_group = failures - old_failures;                               \
     if (failures_in_group == 0) {                                              \
@@ -321,7 +335,7 @@ const char *obs_devnull = "/dev/null";
 
 #if !defined OBS_NO_BENCHMARKS && !defined OBS_NO_CBENCH
 #define OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, get_time, wall_time, \
-                             benchmark...)                                     \
+                             ...)                                              \
   if (obs_can_run_(benchmark_name, benchmark_start, num_benchmarks_filter)) {  \
     fprintf(benchmark_log, BLU "Benchmarking" RESET " " benchmark_name         \
                                " (" #repetitions " time/s) \n");               \
@@ -331,10 +345,11 @@ const char *obs_devnull = "/dev/null";
     benchmarks_run++;                                                          \
     double avg_sys = 0, avg_usr = 0, avg_total = 0;                            \
     int failed = 0;                                                            \
-    for (int i = 0; i < repetitions; ++i) {                                    \
+    int i;                                                                     \
+    for (i = 0; i < repetitions; ++i) {                                        \
       double startReal = wall_time();                                          \
       cbenchTime start = get_time();                                           \
-      benchmark;                                                               \
+      __VA_ARGS__;                                                             \
       cbenchTime end = get_time();                                             \
       double endReal = wall_time();                                            \
       if (start.userTime == -1 || start.systemTime == -1 ||                    \
@@ -388,16 +403,16 @@ const char *obs_devnull = "/dev/null";
     fprintf(benchmark_log, "\n");                                              \
   }
 
-#define OBS_BENCHMARK(benchmark_name, repetitions, benchmark...)               \
+#define OBS_BENCHMARK(benchmark_name, repetitions, ...)                        \
   OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_TIME,              \
-                       OBS_GET_WALL_TIME, benchmark);
+                       OBS_GET_WALL_TIME, __VA_ARGS__);
 
 #ifndef OBS_NO_BENCHMARKS_CHILD
-#define OBS_BENCHMARK_CHILD(benchmark_name, repetitions, benchmark...) \
-    OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_CHILDREN_TIME, \
-                         OBS_GET_WALL_TIME, benchmark);
-#define OBS_BENCHMARK_SYS(benchmark_name, repetitions, command) \
-    OBS_BENCHMARK_CHILD(benchmark_name, repetitions, {system(command);});
+#define OBS_BENCHMARK_CHILD(benchmark_name, repetitions, ...)                  \
+  OBS_BENCHMARK_CUSTOM(benchmark_name, repetitions, OBS_GET_CHILDREN_TIME,     \
+                       OBS_GET_WALL_TIME, __VA_ARGS__);
+#define OBS_BENCHMARK_SYS(benchmark_name, repetitions, command)                \
+  OBS_BENCHMARK_CHILD(benchmark_name, repetitions, { system(command); });
 #else
 #define OBS_BENCHMARK_CHILD(...) ;
 #define OBS_BENCHMARK_SYS(...) ;
@@ -415,12 +430,12 @@ const char *obs_devnull = "/dev/null";
 #define OBS_BENCHMARK_CUSTOM(...) ;
 #endif
 
-#define OBS_TEST(name, group...)                                               \
+#define OBS_TEST(name, ...)                                                    \
   if (obs_can_run_(name, test_start, num_tests_filter)) {                      \
     num_tests++;                                                               \
     success = true;                                                            \
     cur_test = name;                                                           \
-    group;                                                                     \
+    __VA_ARGS__;                                                               \
     if (success) {                                                             \
       successes++;                                                             \
       fprintf(log, GRN "." RESET);                                             \
@@ -431,7 +446,7 @@ const char *obs_devnull = "/dev/null";
     success = true;                                                            \
   }
 
-#define obs_test(cond, fmt, args...)                                           \
+#define obs_test(cond, ...)                                                    \
   do {                                                                         \
     num_of_asserts++;                                                          \
     if (success && !(cond)) {                                                  \
@@ -444,14 +459,30 @@ const char *obs_devnull = "/dev/null";
                            "\n",                                               \
               __LINE__, cur_group, cur_test);                                  \
       fprintf(err_log, "Assert " #cond "\n");                                  \
-      fprintf(err_log, fmt, ##args);                                           \
+      fprintf(err_log, __VA_ARGS__);                                           \
+      fprintf(err_log, "\n\n");                                                \
+    }                                                                          \
+  } while (0)
+
+#define obs_err(...)                                                           \
+  do {                                                                         \
+    if (success) {                                                             \
+      if (raise_on_err) {                                                      \
+        raise(OBS_ERROR_SIGNAL);                                               \
+      }                                                                        \
+      success = false;                                                         \
+      fprintf(err_log,                                                         \
+              GRN __FILE__ ":%d" RESET RED " TEST FAILED: " RESET "%s:%s"      \
+                           "\n",                                               \
+              __LINE__, cur_group, cur_test);                                  \
+      fprintf(err_log, __VA_ARGS__);                                           \
       fprintf(err_log, "\n\n");                                                \
     }                                                                          \
   } while (0)
 
 #define obs_test_binop(type, x, op, y)                                         \
-  obs_test((x op y), obs_get_format_(#type), (type)x, obs_get_neg_op_(#op),    \
-           (type)y)
+  obs_test(((x)op(y)), obs_get_format_(#type), (type)(x),                      \
+           obs_get_neg_op_(#op), (type)(y))
 #define obs_test_eq(type, x, y) obs_test_binop(type, x, ==, y)
 #define obs_test_neq(type, x, y) obs_test_binop(type, x, !=, y)
 #define obs_test_lt(type, x, y) obs_test_binop(type, x, <, y)
@@ -459,13 +490,19 @@ const char *obs_devnull = "/dev/null";
 #define obs_test_lte(type, x, y) obs_test_binop(type, x, <=, y)
 #define obs_test_gte(type, x, y) obs_test_binop(type, x, >=, y)
 #define obs_test_str_eq(x, y)                                                  \
-  obs_test(OBS_STRCMP(x, y) == 0, obs_get_format_("char*"), x, "==", y)
+  obs_test(OBS_STRCMP(x, y) == 0, obs_get_format_("char*"), (x), "==", (y))
 #define obs_test_str_neq(x, y)                                                 \
-  obs_test(OBS_STRCMP(x, y) != 0, obs_get_format_("char*"), x, "!=", y)
-#define obs_test_not_null(x) obs_test(x != NULL, #x " is NULL")
-#define obs_test_null(x) obs_test((x) == NULL, #x " = %p is not NULL", x)
-#define obs_test_true(x) obs_test((x) == true, #x " is not true")
+  obs_test(OBS_STRCMP(x, y) != 0, obs_get_format_("char*"), (x), "!=", (y))
+#define obs_test_not_null(x) obs_test((x) != NULL, #x " is NULL")
+#define obs_test_null(x) obs_test((x) == NULL, #x " = %p is not NULL", (x))
+#define obs_test_true(x) obs_test((x) == true, #x " = %d is not true", (x))
 #define obs_test_false(x) obs_test((x) == false, #x " is not false")
+#define obs_test_mem_eq(type, x, y)                                            \
+  obs_test(OBS_MEMCMP((type *)(x), (type *)(y), sizeof(type)) == 0,            \
+           obs_get_format_(#type), *(type *)(x), "!=", *(type *)(y));
+#define obs_test_mem_neq(type, x, y)                                           \
+  obs_test(OBS_MEMCMP((type *)(x), (type *)(y), sizeof(type)) != 0,            \
+           obs_get_format_(#type), *(type *)(x), "==", *(type *)(y));
 
 _OBSIDIAN_FUNC_ const char *obs_get_format_(char *type) {
   // We only support types up to 256 characters in size
@@ -590,10 +627,12 @@ _OBSIDIAN_FUNC_ const char *obs_get_format_(char *type) {
 
 // Can we run the test/benchmark based on settings
 _OBSIDIAN_FUNC_ bool obs_can_run_(char *name, char **start, int len) {
-  if (start == NULL)
+  if (start == NULL) {
     return true;
+  }
 
-  for (int i = 0; i < len; i++) {
+  int i;
+  for (i = 0; i < len; i++) {
     if (!strcmp(name, start[i])) {
       return true;
     }
@@ -632,7 +671,8 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv,
   bool custom_settings = false;
   bool version = false;
 
-  for (int i = 1; i < *argc; i++) {
+  int i;
+  for (i = 1; i < *argc; i++) {
     if (!strcmp((*argv)[i], "--tests") || !strcmp((*argv)[i], "-t")) {
       if (*test_start != NULL) {
         fprintf(stderr, "Parse Error: you can't have multiple"
@@ -718,7 +758,8 @@ _OBSIDIAN_FUNC_ bool obs_parse_args_(FILE *out, int *argc, char ***argv,
   if (*start != NULL) {                                                        \
     if (*count > 0) {                                                          \
       fprintf(out, "- Running " name ": %s", (*start)[0]);                     \
-      for (int i = 1; i < *count; i++) {                                       \
+      int i;                                                                   \
+      for (i = 1; i < *count; i++) {                                           \
         fprintf(out, " %s", (*start)[i]);                                      \
       }                                                                        \
       fprintf(out, "\n");                                                      \

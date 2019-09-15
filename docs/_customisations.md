@@ -47,6 +47,17 @@ Just define `OBS_STRCMP`
 #include "obsidian.h"
 ```
 
+## Changing the memory compare that is used
+
+Just define `OBS_MEMCMP`
+
+```c
+// important that it is before obsidian
+#define OBS_MEMCMP my_compare
+
+#include "obsidian.h"
+```
+
 ## Don't Strip all arguments before '--'
 
 You can disable stripping all arguments before '--' by definining OBS_DONT_STRIP_ARGS
